@@ -46,7 +46,7 @@ Open `http://localhost:3000`. The backend API docs are at `http://localhost:8000
 
 ## CI pipeline
 
-GitHub Actions runs on pushes and pull requests targeting `main`. It installs backend dependencies, runs Pytest, and builds the frontend. On pushes to `main`, it also builds both container images, scans them with Trivy (the pipeline fails for HIGH or CRITICAL findings), then publishes the images to GHCR using the commit SHA as the tag. The workflow needs the repository's Actions setting for `GITHUB_TOKEN` to allow package writes.
+GitHub Actions runs on pushes and pull requests targeting `main`. It installs backend dependencies, runs Pytest, and builds the frontend. On pushes to `main`, it also builds both container images, scans them with Trivy, and publishes the images to GHCR using the commit SHA as the tag. Scans fail on HIGH or CRITICAL findings with an available fix; findings that have no upstream fix yet are excluded from the blocking threshold. The workflow needs the repository's Actions setting for `GITHUB_TOKEN` to allow package writes.
 
 ## Project tracking
 
