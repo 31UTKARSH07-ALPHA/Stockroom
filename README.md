@@ -63,6 +63,10 @@ ghcr.io/31utkarsh07-alpha/stockroom-backend:<commit-sha>
 ghcr.io/31utkarsh07-alpha/stockroom-frontend:<commit-sha>
 ```
 
+## AWS infrastructure with Terraform
+
+The `terraform/` directory defines a demo AWS VPC with two public subnets, an EKS control plane, and a managed worker node group. See [`terraform/README.md`](terraform/README.md) for prerequisites and the init, plan, apply, and destroy commands. AWS credentials must be configured locally through the AWS CLI profile or standard environment variables; never commit credentials or the generated Terraform state. EKS and EC2 resources incur charges while running, so destroy the demo infrastructure after use.
+
 ## Project tracking
 
 The grading checklist and AI session handoff live in local-only `phase.md` and `agent_handoff.md` files. They are excluded from Git and are not part of the public repository.
