@@ -44,6 +44,10 @@ docker compose up --build
 
 Open `http://localhost:3000`. The backend API docs are at `http://localhost:8000/docs`. Compose runs the Alembic migration when the backend starts. Stop the stack with `docker compose down`; add `-v` only when you also want to delete the local database volume.
 
+## CI pipeline
+
+GitHub Actions runs on pushes and pull requests targeting `main`. It installs backend dependencies, runs Pytest, and builds the frontend. On pushes to `main`, it also builds both container images, scans them with Trivy (the pipeline fails for HIGH or CRITICAL findings), then publishes the images to GHCR using the commit SHA as the tag. The workflow needs the repository's Actions setting for `GITHUB_TOKEN` to allow package writes.
+
 ## Project tracking
 
 The grading checklist and AI session handoff live in local-only `phase.md` and `agent_handoff.md` files. They are excluded from Git and are not part of the public repository.
