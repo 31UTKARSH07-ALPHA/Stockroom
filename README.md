@@ -48,6 +48,21 @@ Open `http://localhost:3000`. The backend API docs are at `http://localhost:8000
 
 GitHub Actions runs on pushes and pull requests targeting `main`. It installs backend dependencies, runs Pytest, and builds the frontend. On pushes to `main`, it also builds both container images, scans them with Trivy, and publishes the images to GHCR using the commit SHA as the tag. Scans fail on HIGH or CRITICAL findings with an available fix; findings that have no upstream fix yet are excluded from the blocking threshold. The workflow needs the repository's Actions setting for `GITHUB_TOKEN` to allow package writes.
 
+Passing implementation run: [Stockroom CI/CD run 38633752094](https://github.com/31UTKARSH07-ALPHA/Stockroom/actions/runs/38633752094).
+
+### Security scan note
+
+Trivy scans operating system and Python/npm packages in both built images. The first backend scan found HIGH [Starlette CVE-2025-62727](https://avd.aquasec.com/nvd/cve-2025-62727) in version 0.46.2; upstream lists 0.49.1 as a fixed version. An older Prometheus instrumentation dependency constrained Starlette, so Stockroom now records request metrics directly with `prometheus-client`. The pipeline blocks fixable HIGH and CRITICAL findings; findings without an upstream fix are excluded from the blocking threshold.
+
+### Published image tags
+
+The workflow tags each image with its source commit SHA:
+
+```text
+ghcr.io/31utkarsh07-alpha/stockroom-backend:<commit-sha>
+ghcr.io/31utkarsh07-alpha/stockroom-frontend:<commit-sha>
+```
+
 ## Project tracking
 
 The grading checklist and AI session handoff live in local-only `phase.md` and `agent_handoff.md` files. They are excluded from Git and are not part of the public repository.
