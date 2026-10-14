@@ -7,6 +7,13 @@ def test_health(client):
     assert response.json() == {"status": "healthy"}
 
 
+def test_metrics_endpoint(client):
+    client.get("/health")
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "stockroom_http_requests_total" in response.text
+
+
 def test_create_and_list_products(client):
     created = client.post("/api/products", json=PRODUCT)
     assert created.status_code == 201

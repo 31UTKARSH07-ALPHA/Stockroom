@@ -4,6 +4,6 @@ SQLAlchemy==2.0.40
 psycopg[binary]==3.2.6
 alembic==1.15.2
 pydantic-settings==2.8.1
-prometheus-fastapi-instrumentator==7.1.0
+prometheus-client==0.26.0
 pytest==8.3.5
 httpx==0.28.1

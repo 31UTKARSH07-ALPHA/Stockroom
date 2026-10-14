@@ -1,5 +1,7 @@
-from fastapi import Depends, FastAPI, HTTPException, Response, status
-from prometheus_fastapi_instrumentator import Instrumentator
+from time import perf_counter
+
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -9,7 +11,30 @@ from .models import Product
 from .schemas import ProductCreate, ProductRead, ProductUpdate
 
 app = FastAPI(title="Stockroom API", version="0.1.0")
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+REQUEST_COUNT = Counter(
+    "stockroom_http_requests_total",
+    "HTTP requests handled by Stockroom",
+    ("method", "route", "status_code"),
+)
+REQUEST_DURATION = Histogram(
+    "stockroom_http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ("method", "route"),
+)
+
+
+@app.middleware("http")
+async def collect_request_metrics(request: Request, call_next):
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    started = perf_counter()
+    response = await call_next(request)
+    route = request.scope.get("route")
+    route_name = route.path if route is not None else request.url.path
+    REQUEST_COUNT.labels(request.method, route_name, str(response.status_code)).inc()
+    REQUEST_DURATION.labels(request.method, route_name).observe(perf_counter() - started)
+    return response
 
 
 @app.get("/health")
@@ -21,6 +46,11 @@ def health():
 def ready(db: Session = Depends(get_db)):
     db.execute(select(1))
     return {"status": "ready"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/api/products", response_model=list[ProductRead])
