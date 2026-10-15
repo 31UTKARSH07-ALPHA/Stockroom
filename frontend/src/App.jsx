@@ -55,6 +55,27 @@ function App() {
     else await loadProducts()
   }
 
+  function exportProducts() {
+    const csvCell = value => {
+      let text = String(value ?? '')
+      if (/^[\t\r\n ]*[=+\-@]/.test(text)) text = `'${text}`
+      return `"${text.replace(/"/g, '""')}"`
+    }
+    const rows = [
+      ['SKU', 'Name', 'Category', 'Quantity', 'Price'],
+      ...products.map(product => [product.sku, product.name, product.category, product.quantity, Number(product.price).toFixed(2)]),
+    ]
+    const csv = rows.map(row => row.map(csvCell).join(',')).join('\r\n')
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'stockroom-inventory.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
   return <div className="shell">
     <aside className="sidebar">
       <a className="brand" href="#"><span className="brand-mark"><Boxes size={20} /></span><span>stockroom<span className="brand-dot">.</span></span></a>
@@ -67,7 +88,7 @@ function App() {
     <main className="main">
       <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <strong>Inventory</strong></div><div className="top-actions"><span className="live-dot"></span><span className="sync-label">All changes synced</span><button className="icon-button" aria-label="Activity"><Activity size={18} /></button><div className="avatar small">UP</div></div></header>
       <section className="content">
-        <div className="page-heading"><div><div className="eyebrow">YOUR BUSINESS, AT A GLANCE</div><h1>Inventory</h1><p className="subtitle">Keep your products organized and your stock in check.</p></div><div className="heading-actions"><button className="button secondary"><ArrowDownToLine size={16} />Export</button><button className="button primary" onClick={openCreate}><Plus size={17} />Add product</button></div></div>
+        <div className="page-heading"><div><div className="eyebrow">YOUR BUSINESS, AT A GLANCE</div><h1>Inventory</h1><p className="subtitle">Keep your products organized and your stock in check.</p></div><div className="heading-actions"><button className="button secondary" onClick={exportProducts}><ArrowDownToLine size={16} />Export</button><button className="button primary" onClick={openCreate}><Plus size={17} />Add product</button></div></div>
         <div className="stats-grid">
           <article className="stat-card"><div className="stat-top"><span>Total products</span><span className="stat-icon lilac"><Package size={17} /></span></div><div className="stat-value">{products.length.toString().padStart(2, '0')}</div><div className="stat-note"><span className="trend"><TrendingUp size={13} /> Inventory items</span><span> across all categories</span></div></article>
           <article className="stat-card"><div className="stat-top"><span>Stock value</span><span className="stat-icon mint"><TrendingUp size={17} /></span></div><div className="stat-value">{currency.format(inventoryValue)}</div><div className="stat-note">Based on current quantity</div></article>

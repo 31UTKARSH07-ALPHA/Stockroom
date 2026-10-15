@@ -2,6 +2,8 @@
 
 Inventory management for small teams. Track products, stock levels, categories, and inventory value in one place.
 
+The dashboard supports product create, read, update, and delete, plus CSV export of the inventory.
+
 ## Stack
 
 - React + Vite frontend
@@ -124,3 +126,5 @@ The `terraform/` directory contains a reference configuration for a demo AWS VPC
 ## Project tracking
 
 The grading checklist and AI session handoff live in local-only `phase.md` and `agent_handoff.md` files. They are excluded from Git and are not part of the public repository.
+
+For a repeatable walkthrough of the CRUD app, CI pipeline, Kind rollout, and dashboards, see [`DEMO.md`](DEMO.md).
