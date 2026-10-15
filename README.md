@@ -72,6 +72,32 @@ Kind maps host port `8080` to the Traefik HTTP NodePort. Open `http://localhost:
 
 To remove the local demo cluster when finished, run `kind delete cluster --name stockroom`.
 
+## Local observability (Prometheus + Grafana)
+
+The M9 observability stack is local to Kind; it provisions no cloud resources. The chart values keep retention ephemeral and disable optional exporters/Alertmanager to limit resource use. Prometheus discovers backend pods through their scrape annotations. Grafana is provisioned with the Prometheus datasource and a Stockroom API dashboard. These sample credentials and ephemeral data are for this local demo only.
+
+```bash
+helm upgrade --install stockroom helm/stockroom --namespace stockroom --wait
+helm upgrade --install prometheus prometheus-community/prometheus --version 29.35.0 \
+  --namespace observability --create-namespace -f observability/prometheus-values.yaml --wait
+helm upgrade --install grafana grafana-community/grafana --version 14.0.0 \
+  --namespace observability -f observability/grafana-values.yaml --wait
+```
+
+In one terminal, start the Prometheus port-forward:
+
+```bash
+kubectl port-forward -n observability service/prometheus-server 9090:80
+```
+
+In another terminal, start the Grafana port-forward:
+
+```bash
+kubectl port-forward -n observability service/grafana 3001:80
+```
+
+Prometheus is at `http://localhost:9090`; check **Status → Targets** for the two `stockroom` targets. Grafana is at `http://localhost:3001` (`admin` / `stockroom-local`); open the **Stockroom API Overview** dashboard for request rate and p95 latency. The backend metrics endpoint is `http://localhost:8080/metrics`.
+
 ## CI pipeline
 
 GitHub Actions runs on pushes and pull requests targeting `main`. It installs backend dependencies, runs Pytest, and builds the frontend. On pushes to `main`, it also builds both container images, scans them with Trivy, and publishes the images to GHCR using the commit SHA as the tag. Scans fail on HIGH or CRITICAL findings with an available fix; findings that have no upstream fix yet are excluded from the blocking threshold. The workflow needs the repository's Actions setting for `GITHUB_TOKEN` to allow package writes.
