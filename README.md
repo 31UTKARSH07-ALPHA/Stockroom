@@ -1,54 +1,118 @@
 # Stockroom
 
-Inventory management for small teams. Track products, stock levels, categories, and inventory value in one place.
+![Stockroom inventory dashboard](evidence/application-dashboard.png)
 
-The dashboard supports product create, read, update, and delete, plus CSV export of the inventory.
+**A full-stack inventory CRUD application with a containerized delivery pipeline and a locally deployed Kubernetes demo.** Stockroom helps a small team track products, categories, quantities, and stock value. This repository demonstrates the path from a code change through automated tests and security scans to a versioned container image and a Helm-managed Kind deployment.
 
-## Stack
+[![Stockroom CI/CD](https://github.com/31UTKARSH07-ALPHA/Stockroom/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/31UTKARSH07-ALPHA/Stockroom/actions/workflows/ci-cd.yml)
+[View the repository](https://github.com/31UTKARSH07-ALPHA/Stockroom) · [Demo walkthrough](DEMO.md) · [Grading evidence](#rubric-and-evidence)
 
-- React + Vite frontend
-- FastAPI backend with SQLAlchemy and PostgreSQL
-- Alembic database migrations
-- Pytest API tests
+> **Deployment scope:** Docker Compose and Kubernetes run locally. Terraform contains an AWS VPC/EKS reference configuration, but no AWS plan or resources were created. This project intentionally uses no AWS services.
 
-## Local development
+## What the application does
 
-1. Start PostgreSQL and create a database named `stockroom` (or set `DATABASE_URL`).
-2. In a terminal, install and start the backend:
+Stockroom provides a responsive inventory dashboard to:
 
-   ```bash
-   cd backend
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   export DATABASE_URL='postgresql+psycopg://stockroom:stockroom@localhost:5432/stockroom'
-   alembic upgrade head
-   uvicorn app.main:app --reload --port 8000
-   ```
+- Create, list, view, edit, and delete products.
+- Record a SKU, product name, category, quantity, and price.
+- Search and filter the product catalog and review inventory totals.
+- Export inventory as CSV. Values are quoted and escaped; spreadsheet formula-leading text is guarded.
 
-3. In another terminal, install and start the frontend:
+The FastAPI backend provides CRUD routes, health/readiness checks, and Prometheus metrics. PostgreSQL stores products, and Alembic manages the schema migration.
 
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
+## Architecture
 
-Open the Vite URL (usually `http://localhost:5173`). The API is available at `http://localhost:8000/docs`; health and metrics are at `/health` and `/metrics`.
-
-## Run the full stack with Docker Compose
-
-With Docker running, start the frontend, API, and PostgreSQL together:
-
-```bash
-docker compose up --build
+```mermaid
+flowchart LR
+    Dev[Code change] --> Git[GitHub main]
+    Git --> Test[GitHub Actions: Pytest + frontend build]
+    Test --> Image[Build backend and frontend images]
+    Image --> Scan[Trivy: HIGH / CRITICAL with fixes]
+    Scan --> GHCR[Publish SHA-tagged images to GHCR]
+    GHCR -. same source SHA, rolled out locally .-> Kind[Kind + Helm]
+    Kind --> Ingress[Traefik Ingress]
+    Ingress --> Web[React frontend]
+    Ingress --> API[FastAPI backend]
+    API --> DB[(PostgreSQL)]
+    Prom -. scrape /metrics .-> API
+    Prom --> Grafana[Grafana dashboard]
 ```
 
-Open `http://localhost:3000`. The backend API docs are at `http://localhost:8000/docs`. Compose runs the Alembic migration when the backend starts. Stop the stack with `docker compose down`; add `-v` only when you also want to delete the local database volume.
+The GitHub Actions workflow tests, builds, scans, and publishes images. The local Kind rollout is a separate demonstration step; the workflow does not deploy to a cloud cluster.
 
-## Local Kubernetes deployment (Kind + Helm)
+## Technology
 
-The local Kubernetes path runs on Docker Desktop and does not create AWS resources. It uses a Kind cluster, the Traefik ingress controller, and the Stockroom Helm chart. Start Docker Desktop before running these commands.
+| Area | Tools |
+| --- | --- |
+| Frontend | React, Vite, Nginx |
+| API | Python 3.12, FastAPI, SQLAlchemy |
+| Data | PostgreSQL 16, Alembic |
+| Tests | Pytest, isolated SQLite test database |
+| Local containers | Docker, Docker Compose |
+| CI and registry | GitHub Actions, GHCR |
+| Image security | Trivy |
+| Local orchestration | Kubernetes (Kind), Helm, Traefik Ingress |
+| Observability | Prometheus, Grafana |
+| Infrastructure reference | Terraform for AWS VPC/EKS (not applied) |
+
+## Run with Docker Compose
+
+**Requirements:** Docker Desktop or Docker Engine with the Compose plugin.
+
+From the repository root:
+
+```bash
+docker compose up --build -d
+```
+
+Open the application at <http://localhost:3000>. The API documentation is at <http://localhost:8000/docs>; health and metrics are available at `/health`, `/ready`, and `/metrics` on port 8000. Compose starts PostgreSQL, waits for it to become healthy, and applies the Alembic migration as the backend starts.
+
+```bash
+docker compose ps
+docker compose down
+```
+
+Add `-v` to `docker compose down` only when you also want to remove the local PostgreSQL data volume. Compose defaults are for local learning; set your own environment values before using the stack with non-demo data.
+
+## Run tests
+
+The backend tests use an isolated SQLite database through the test fixtures; they do not connect to the Compose database.
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pytest -v
+```
+
+The suite contains six API tests covering product operations and metrics. `pytest.ini` configures the test import path.
+
+## CI/CD and image security
+
+Workflow: [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)
+
+On pushes and pull requests targeting `main`, GitHub Actions installs backend dependencies, runs Pytest, installs frontend dependencies, and builds the frontend. On pushes to `main`, a dependent job then:
+
+1. Builds the backend and frontend container images.
+2. Scans both images with Trivy for OS and library vulnerabilities.
+3. Fails on HIGH or CRITICAL findings that have a fix available.
+4. Publishes both images to GHCR with the full source commit SHA as the tag.
+
+```text
+ghcr.io/31utkarsh07-alpha/stockroom-backend:<commit-sha>
+ghcr.io/31utkarsh07-alpha/stockroom-frontend:<commit-sha>
+```
+
+The workflow needs the repository Actions setting to allow `GITHUB_TOKEN` package writes. It does not contain registry passwords or AWS credentials.
+
+### Security finding and fix
+
+An earlier backend scan identified HIGH [Starlette CVE-2025-62727](https://avd.aquasec.com/nvd/cve-2025-62727) in version 0.46.2. A Prometheus instrumentation dependency constrained the Starlette version. The project removed that dependency and records request metrics directly with `prometheus-client`, allowing FastAPI to resolve a fixed Starlette version. Trivy remains configured to block actionable HIGH and CRITICAL findings; vulnerabilities without an upstream fix are excluded from the blocking threshold.
+
+## Local Kubernetes deployment
+
+The Kind setup uses Docker Desktop, Traefik, and the Stockroom Helm chart. It creates no cloud resources. Install Docker, `kind`, `kubectl`, and Helm first.
 
 Create the cluster and namespace:
 
@@ -57,74 +121,209 @@ kind create cluster --name stockroom --config k8s/kind-config.yaml
 kubectl apply -f k8s/namespace.yaml
 ```
 
-Build and load the local images, install Traefik, then deploy Stockroom:
+Build and load the local images, install Traefik, and deploy the app:
 
 ```bash
 docker build -t stockroom-backend:local ./backend
 docker build -t stockroom-frontend:local ./frontend
 kind load docker-image stockroom-backend:local stockroom-frontend:local --name stockroom
+
 helm repo add traefik https://traefik.github.io/charts
 helm repo update traefik
 helm upgrade --install traefik traefik/traefik --version 42.0.0 \
-  --namespace ingress-system --create-namespace -f helm/traefik-values.yaml --wait
-helm upgrade --install stockroom helm/stockroom --namespace stockroom --wait
+  --namespace ingress-system --create-namespace \
+  -f helm/traefik-values.yaml --wait
+helm upgrade --install stockroom helm/stockroom \
+  --namespace stockroom --wait
 ```
 
-Kind maps host port `8080` to the Traefik HTTP NodePort. Open `http://127.0.0.1:8080`; `/health` and `/api/products` are routed to the backend. Use the IPv4 address to reach Kind's host mapping on systems where `localhost` resolves to a separate IPv6 listener. Inspect the deployment with `kubectl get pods,svc,ingress -n stockroom -o wide` and `helm status stockroom -n stockroom`. The chart runs two backend and two frontend replicas with ClusterIP Services. Its PostgreSQL pod uses ephemeral storage and demo credentials, so this setup is for local learning rather than persistent or production data. The backend migration startup uses a PostgreSQL advisory lock so both replicas can start together.
-
-To remove the local demo cluster when finished, run `kind delete cluster --name stockroom`.
-
-## Local observability (Prometheus + Grafana)
-
-The M9 observability stack is local to Kind; it provisions no cloud resources. The chart values keep retention ephemeral and disable optional exporters/Alertmanager to limit resource use. Prometheus discovers backend pods through their scrape annotations. Grafana is provisioned with the Prometheus datasource and a Stockroom API dashboard. These sample credentials and ephemeral data are for this local demo only.
+Open <http://127.0.0.1:8080>. Kind maps this IPv4 host port to the Traefik HTTP NodePort; using `127.0.0.1` avoids hosts where `localhost` resolves to a different IPv6 listener. The Ingress sends `/` to the frontend and `/api` to the backend.
 
 ```bash
-helm upgrade --install stockroom helm/stockroom --namespace stockroom --wait
-helm upgrade --install prometheus prometheus-community/prometheus --version 29.35.0 \
-  --namespace observability --create-namespace -f observability/prometheus-values.yaml --wait
-helm upgrade --install grafana grafana-community/grafana --version 14.0.0 \
-  --namespace observability -f observability/grafana-values.yaml --wait
+kubectl get pods,svc,ingress -n stockroom -o wide
+helm status stockroom -n stockroom
+curl http://127.0.0.1:8080/health
 ```
 
-In one terminal, start the Prometheus port-forward:
+The chart runs two frontend and two backend replicas. Its PostgreSQL pod uses demo credentials and ephemeral storage. Treat this as a local demonstration, not a persistent production database. To remove the cluster, run `kind delete cluster --name stockroom`.
+
+### Roll out a CI-built source revision locally
+
+Use the full commit SHA from a successful Actions run. Build and load the matching frontend image, then set the Helm image tag to that same SHA:
+
+```bash
+IMAGE_TAG=<full-commit-sha>
+docker build -t stockroom-frontend:$IMAGE_TAG ./frontend
+kind load docker-image stockroom-frontend:$IMAGE_TAG --name stockroom
+helm upgrade --install stockroom helm/stockroom --namespace stockroom \
+  --set frontend.image.tag=$IMAGE_TAG --wait
+kubectl rollout status deployment/stockroom-frontend -n stockroom
+kubectl get deployment stockroom-frontend -n stockroom -o wide
+```
+
+This local rollout makes the source-to-image-to-deployment relationship visible; it is not an automated cloud deployment.
+
+## Observability with Prometheus and Grafana
+
+Prometheus and Grafana are installed inside the local Kind cluster with the repository values files. Start Docker Desktop and the `stockroom` Kind cluster first.
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
+helm repo update prometheus-community
+helm repo update grafana-community
+
+helm upgrade --install prometheus prometheus-community/prometheus --version 29.35.0 \
+  --namespace observability --create-namespace \
+  -f observability/prometheus-values.yaml --wait
+helm upgrade --install grafana grafana-community/grafana --version 14.0.0 \
+  --namespace observability \
+  -f observability/grafana-values.yaml --wait
+```
+
+In separate terminals, forward the services:
 
 ```bash
 kubectl port-forward -n observability service/prometheus-server 9090:80
-```
-
-In another terminal, start the Grafana port-forward:
-
-```bash
 kubectl port-forward -n observability service/grafana 3001:80
 ```
 
-Prometheus is at `http://localhost:9090`; check **Status → Targets** for the two `stockroom` targets. Grafana is at `http://localhost:3001` (`admin` / `stockroom-local`); open the **Stockroom API Overview** dashboard for request rate and p95 latency. The backend metrics endpoint is `http://127.0.0.1:8080/metrics`.
+- Prometheus: <http://localhost:9090/targets>. The `stockroom` job should show two backend targets as `UP`.
+- Grafana: <http://localhost:3001/d/stockroom-overview/stockroom-api-overview>. The local demo login is `admin` / `stockroom-local`.
+- Backend metrics: <http://127.0.0.1:8080/metrics>.
 
-## CI pipeline
+The dashboard includes request-rate and latency panels. Prometheus retention and demo data are ephemeral. Do not reuse the sample Grafana credentials outside this local environment.
 
-GitHub Actions runs on pushes and pull requests targeting `main`. It installs backend dependencies, runs Pytest, and builds the frontend. On pushes to `main`, it also builds both container images, scans them with Trivy, and publishes the images to GHCR using the commit SHA as the tag. Scans fail on HIGH or CRITICAL findings with an available fix; findings that have no upstream fix yet are excluded from the blocking threshold. The workflow needs the repository's Actions setting for `GITHUB_TOKEN` to allow package writes.
+## Terraform reference: AWS (not deployed)
 
-Passing implementation run: [Stockroom CI/CD run 38633752094](https://github.com/31UTKARSH07-ALPHA/Stockroom/actions/runs/38633752094).
+[`terraform/`](terraform/) contains HCL for a VPC with two public subnets, an EKS control plane, and a managed node group. `terraform init` and `terraform validate` succeeded. No AWS plan, apply, or destroy was run, and no AWS resources were created, because this project was scoped to use no AWS. Therefore the AWS provisioning and teardown criteria are **not fulfilled**. The example variables file contains no real credentials. See [`terraform/README.md`](terraform/README.md) for the reference workflow and cost notes.
 
-### Security scan note
+## Rubric and evidence
 
-Trivy scans operating system and Python/npm packages in both built images. The first backend scan found HIGH [Starlette CVE-2025-62727](https://avd.aquasec.com/nvd/cve-2025-62727) in version 0.46.2; upstream lists 0.49.1 as a fixed version. An older Prometheus instrumentation dependency constrained Starlette, so Stockroom now records request metrics directly with `prometheus-client`. The pipeline blocks fixable HIGH and CRITICAL findings; findings without an upstream fix are excluded from the blocking threshold.
+The evidence files below are committed in [`evidence/`](evidence/). Expand a module to view its screenshots. The table reports implementation/evidence status against the supplied 100-point rubric; it does not claim an instructor-awarded grade.
 
-### Published image tags
+| Module | Weight | Status in this project | Evidence |
+| --- | ---: | --- | --- |
+| M1 — Application | 10 | Complete | App screenshot and CRUD implementation |
+| M2 — Tests | 10 | Complete | Six passing tests; isolated test database |
+| M3 — Git/GitHub | 5 | Complete | Public repo, commit history, ignore rules |
+| M4 — Docker | 10 | Complete | Multi-stage frontend, non-root runtimes, Compose |
+| M5 — CI/CD | 15 | Complete | Actions workflow, GHCR SHA tags |
+| M6 — Trivy | 5 | Complete | Both images scanned; fixable HIGH/CRITICAL findings block the pipeline |
+| M7 — Terraform/AWS | 15 | **Partial by choice** | HCL, init/validate, and example variables only; no AWS plan/provision/destroy |
+| M8 — Kubernetes/Helm | 15 | Core scored items complete; final-project HPA requirement is pending | Kind, Helm, two replicas each, Services, Ingress |
+| M9 — Observability | 10 | Complete | Metrics endpoint, two Prometheus targets, Grafana dashboard |
+| M10 — Presentation/docs | 5 | Complete | README, demo walkthrough, change/Actions/rollout evidence |
 
-The workflow tags each image with its source commit SHA:
+### Final student project minimum requirements audit
+
+This cross-check includes the separate minimum-requirements list in the capstone README, which names HPA even though HPA is not a separately scored item in the 100-point M8 rubric above. **The project does not yet meet every final-project minimum:** HPA is not implemented, and AWS Terraform resources were intentionally not created.
+
+| Area | Minimum requirement | Status | Repository evidence / gap |
+| --- | --- | --- | --- |
+| Application | Frontend | Met | React/Vite in `frontend/` |
+| Application | Backend | Met | FastAPI in `backend/app/` |
+| Application | PostgreSQL | Met | Compose and local Kind PostgreSQL deployments |
+| Application | At least four REST API operations | Met | Product list/detail GET, create POST, update PUT, delete DELETE |
+| Application | Responsive UI | Met | Responsive CSS breakpoints and viewport metadata |
+| Engineering | Git/GitHub | Met | [Public repository](https://github.com/31UTKARSH07-ALPHA/Stockroom), commit evidence above |
+| Engineering | Automated tests | Met | Six Pytest API tests, isolated SQLite fixture |
+| Engineering | Docker | Met | Backend/frontend Dockerfiles and Compose stack |
+| DevOps | GitHub Actions | Met | Test/build and main-branch image workflow |
+| DevOps | Security scan | Met | Trivy scans both images in CI |
+| DevOps | Container registry | Met | Backend and frontend images published to GHCR with SHA tags |
+| DevOps | Terraform | Partial | AWS VPC/EKS HCL and example variables exist; no AWS plan/apply was run |
+| DevOps | Kubernetes | Met | Application deployed to local Kind |
+| DevOps | Helm | Met | Stockroom chart deploys the application |
+| DevOps | Ingress | Met | Traefik routes `/` and `/api` |
+| DevOps | HPA | **Not met** | No HorizontalPodAutoscaler resource or metrics-server setup exists yet |
+| DevOps | Prometheus/Grafana | Met | Backend metrics scraped and dashboard provisioned in local Kind |
+
+### M1 — Application
+
+FastAPI and PostgreSQL support product CRUD through GET, POST, PUT, and DELETE operations. Alembic manages the schema. The React dashboard calls the API and adapts to smaller screens.
+
+<p align="center"><a href="evidence/application-dashboard.png"><img src="evidence/application-dashboard.png" alt="Stockroom inventory dashboard with a product row and stock summary" width="760"></a></p>
+
+### M2 — Testing and M3 — GitHub
+
+The backend suite has six tests and uses an isolated SQLite test database. The public repository contains meaningful commits and a `.gitignore` for local dependencies and secrets.
+
+<p align="center"><a href="evidence/pytest-passing.png"><img src="evidence/pytest-passing.png" alt="Pytest terminal output showing six passing tests" width="600"></a></p>
+<p align="center"><a href="evidence/commit-history.png"><img src="evidence/commit-history.png" alt="Stockroom GitHub commit history" width="760"></a></p>
+
+### M4 — Docker
+
+The Compose stack starts PostgreSQL, the FastAPI backend, and the Nginx-served frontend. Both runtime images use non-root users; the frontend image uses a Node build stage and Nginx runtime stage.
+
+<p align="center"><a href="evidence/docker-compose-running.png"><img src="evidence/docker-compose-running.png" alt="Docker Compose services running" width="760"></a></p>
+
+### M5 — CI/CD and M6 — Trivy
+
+The Actions screenshot shows the successful pipeline. GHCR screenshots show both published packages with commit-SHA tags. Trivy evidence is included for both images.
+
+<p align="center">
+  <a href="evidence/github-actions-green.png"><img src="evidence/github-actions-green.png" alt="Successful Stockroom GitHub Actions pipeline" width="49%"></a>
+  <a href="evidence/ghcr-backend-sha-tag.png"><img src="evidence/ghcr-backend-sha-tag.png" alt="Backend package in GHCR with SHA tag" width="49%"></a>
+</p>
+<p align="center"><a href="evidence/ghcr-frontend-sha-tag.png"><img src="evidence/ghcr-frontend-sha-tag.png" alt="Frontend package in GHCR with SHA tag" width="49%"></a></p>
+<p align="center">
+  <a href="evidence/trivy-backend-scan.png"><img src="evidence/trivy-backend-scan.png" alt="Trivy backend image scan" width="49%"></a>
+  <a href="evidence/trivy-frontend-scan.png"><img src="evidence/trivy-frontend-scan.png" alt="Trivy frontend image scan" width="49%"></a>
+</p>
+
+### M7 — Terraform/AWS (partial)
+
+Terraform configuration, initialization, validation, and an example variables file are present. AWS-only steps were skipped by design; the screenshot is explicitly local Terraform validation evidence, not proof of AWS deployment.
+
+<p align="center"><a href="evidence/terraform-init-validate.png"><img src="evidence/terraform-init-validate.png" alt="Terraform initialization and validation output" width="760"></a></p>
+
+### M8 — Kubernetes and Helm
+
+The Stockroom Helm release runs in Kind with frontend/backend Deployments, two replicas each, ClusterIP Services, PostgreSQL, and Traefik Ingress.
+
+<p align="center">
+  <a href="evidence/k8s-pods-services.png"><img src="evidence/k8s-pods-services.png" alt="Kind pods and services for Stockroom" width="49%"></a>
+  <a href="evidence/helm-release.png"><img src="evidence/helm-release.png" alt="Stockroom Helm release status" width="49%"></a>
+</p>
+
+### M9 — Prometheus and Grafana
+
+The backend exposes Prometheus-formatted metrics. Prometheus discovers both backend replicas, and Grafana shows live request and latency data.
+
+<p align="center"><a href="evidence/backend-metrics.png"><img src="evidence/backend-metrics.png" alt="Prometheus-formatted Stockroom backend metrics" width="760"></a></p>
+<p align="center">
+  <a href="evidence/prometheus-targets.png"><img src="evidence/prometheus-targets.png" alt="Prometheus targets with both Stockroom backends up" width="49%"></a>
+  <a href="evidence/grafana-dashboard.png"><img src="evidence/grafana-dashboard.png" alt="Grafana Stockroom API overview dashboard" width="49%"></a>
+</p>
+
+### M10 — Demo and release evidence
+
+The CSV screenshot shows the exported product data. The Actions run is green, and the Kind screenshot shows the frontend rolled out with the full commit SHA and two ready replicas. Follow [`DEMO.md`](DEMO.md) for the repeatable CRUD, pipeline, rollout, and observability walkthrough.
+
+<p align="center"><a href="evidence/export-csv.png"><img src="evidence/export-csv.png" alt="Stockroom inventory and exported CSV data" width="760"></a></p>
+<p align="center">
+  <a href="evidence/actions-run.png"><img src="evidence/actions-run.png" alt="Successful GitHub Actions run for the M10 change" width="49%"></a>
+  <a href="evidence/k8s-rollout.png"><img src="evidence/k8s-rollout.png" alt="Kind rollout with SHA-tagged frontend image and two ready replicas" width="49%"></a>
+</p>
+
+## Repository map
 
 ```text
-ghcr.io/31utkarsh07-alpha/stockroom-backend:<commit-sha>
-ghcr.io/31utkarsh07-alpha/stockroom-frontend:<commit-sha>
+backend/                 FastAPI application, SQLAlchemy models, Alembic, Pytest
+frontend/                React/Vite UI and Nginx runtime configuration
+.github/workflows/       GitHub Actions test, build, Trivy, and GHCR workflow
+helm/stockroom/          Kubernetes Helm chart
+k8s/                     Kind cluster configuration and namespace
+observability/            Prometheus and Grafana Helm values
+terraform/                AWS VPC/EKS reference configuration (not applied)
+evidence/                 Rubric screenshots (PNG)
+DEMO.md                   Step-by-step presentation walkthrough
 ```
 
-## AWS Terraform reference (not deployed)
+## Links
 
-The `terraform/` directory contains a reference configuration for a demo AWS VPC and EKS cluster. This project is being deployed locally without AWS; Terraform has been initialized and validated, but no AWS plan or resources have been created. See [`terraform/README.md`](terraform/README.md) if you want to review the reference configuration.
-
-## Project tracking
-
-The grading checklist and AI session handoff live in local-only `phase.md` and `agent_handoff.md` files. They are excluded from Git and are not part of the public repository.
-
-For a repeatable walkthrough of the CRUD app, CI pipeline, Kind rollout, and dashboards, see [`DEMO.md`](DEMO.md).
+- [GitHub repository](https://github.com/31UTKARSH07-ALPHA/Stockroom)
+- [GitHub Actions workflow](https://github.com/31UTKARSH07-ALPHA/Stockroom/actions/workflows/ci-cd.yml)
+- [Demo walkthrough](DEMO.md)
+- [AWS Terraform reference and cost notes](terraform/README.md)
