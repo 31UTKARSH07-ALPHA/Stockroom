@@ -70,7 +70,7 @@ helm upgrade --install traefik traefik/traefik --version 42.0.0 \
 helm upgrade --install stockroom helm/stockroom --namespace stockroom --wait
 ```
 
-Kind maps host port `8080` to the Traefik HTTP NodePort. Open `http://localhost:8080`; `/health` and `/api/products` are routed to the backend. Inspect the deployment with `kubectl get pods,svc,ingress -n stockroom -o wide` and `helm status stockroom -n stockroom`. The chart runs two backend and two frontend replicas with ClusterIP Services. Its PostgreSQL pod uses ephemeral storage and demo credentials, so this setup is for local learning rather than persistent or production data. The backend migration startup uses a PostgreSQL advisory lock so both replicas can start together.
+Kind maps host port `8080` to the Traefik HTTP NodePort. Open `http://127.0.0.1:8080`; `/health` and `/api/products` are routed to the backend. Use the IPv4 address to reach Kind's host mapping on systems where `localhost` resolves to a separate IPv6 listener. Inspect the deployment with `kubectl get pods,svc,ingress -n stockroom -o wide` and `helm status stockroom -n stockroom`. The chart runs two backend and two frontend replicas with ClusterIP Services. Its PostgreSQL pod uses ephemeral storage and demo credentials, so this setup is for local learning rather than persistent or production data. The backend migration startup uses a PostgreSQL advisory lock so both replicas can start together.
 
 To remove the local demo cluster when finished, run `kind delete cluster --name stockroom`.
 
@@ -98,7 +98,7 @@ In another terminal, start the Grafana port-forward:
 kubectl port-forward -n observability service/grafana 3001:80
 ```
 
-Prometheus is at `http://localhost:9090`; check **Status → Targets** for the two `stockroom` targets. Grafana is at `http://localhost:3001` (`admin` / `stockroom-local`); open the **Stockroom API Overview** dashboard for request rate and p95 latency. The backend metrics endpoint is `http://localhost:8080/metrics`.
+Prometheus is at `http://localhost:9090`; check **Status → Targets** for the two `stockroom` targets. Grafana is at `http://localhost:3001` (`admin` / `stockroom-local`); open the **Stockroom API Overview** dashboard for request rate and p95 latency. The backend metrics endpoint is `http://127.0.0.1:8080/metrics`.
 
 ## CI pipeline
 

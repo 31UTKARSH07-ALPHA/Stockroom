@@ -4,7 +4,7 @@ This run-through shows the inventory CRUD workflow, CSV export, CI pipeline, loc
 
 ## 1. Show the app
 
-Open `http://localhost:8080`. Add a sample product such as:
+Open `http://127.0.0.1:8080`. Add a sample product such as:
 
 | Field | Value |
 | --- | --- |
@@ -32,7 +32,7 @@ helm upgrade --install stockroom helm/stockroom --namespace stockroom \
   --set frontend.image.tag=$IMAGE_TAG --wait
 kubectl rollout status deployment/stockroom-frontend -n stockroom
 kubectl get pods -n stockroom -o wide
-curl -I http://localhost:8080
+curl -I http://127.0.0.1:8080
 ```
 
 Reload the app and show the Export button. To restore the chart's default `local` image tag after the demo, rebuild/load `stockroom-frontend:local`, then run:
