@@ -44,6 +44,34 @@ docker compose up --build
 
 Open `http://localhost:3000`. The backend API docs are at `http://localhost:8000/docs`. Compose runs the Alembic migration when the backend starts. Stop the stack with `docker compose down`; add `-v` only when you also want to delete the local database volume.
 
+## Local Kubernetes deployment (Kind + Helm)
+
+The local Kubernetes path runs on Docker Desktop and does not create AWS resources. It uses a Kind cluster, the Traefik ingress controller, and the Stockroom Helm chart. Start Docker Desktop before running these commands.
+
+Create the cluster and namespace:
+
+```bash
+kind create cluster --name stockroom --config k8s/kind-config.yaml
+kubectl apply -f k8s/namespace.yaml
+```
+
+Build and load the local images, install Traefik, then deploy Stockroom:
+
+```bash
+docker build -t stockroom-backend:local ./backend
+docker build -t stockroom-frontend:local ./frontend
+kind load docker-image stockroom-backend:local stockroom-frontend:local --name stockroom
+helm repo add traefik https://traefik.github.io/charts
+helm repo update traefik
+helm upgrade --install traefik traefik/traefik --version 42.0.0 \
+  --namespace ingress-system --create-namespace -f helm/traefik-values.yaml --wait
+helm upgrade --install stockroom helm/stockroom --namespace stockroom --wait
+```
+
+Kind maps host port `8080` to the Traefik HTTP NodePort. Open `http://localhost:8080`; `/health` and `/api/products` are routed to the backend. Inspect the deployment with `kubectl get pods,svc,ingress -n stockroom -o wide` and `helm status stockroom -n stockroom`. The chart runs two backend and two frontend replicas with ClusterIP Services. Its PostgreSQL pod uses ephemeral storage and demo credentials, so this setup is for local learning rather than persistent or production data. The backend migration startup uses a PostgreSQL advisory lock so both replicas can start together.
+
+To remove the local demo cluster when finished, run `kind delete cluster --name stockroom`.
+
 ## CI pipeline
 
 GitHub Actions runs on pushes and pull requests targeting `main`. It installs backend dependencies, runs Pytest, and builds the frontend. On pushes to `main`, it also builds both container images, scans them with Trivy, and publishes the images to GHCR using the commit SHA as the tag. Scans fail on HIGH or CRITICAL findings with an available fix; findings that have no upstream fix yet are excluded from the blocking threshold. The workflow needs the repository's Actions setting for `GITHUB_TOKEN` to allow package writes.
@@ -63,9 +91,9 @@ ghcr.io/31utkarsh07-alpha/stockroom-backend:<commit-sha>
 ghcr.io/31utkarsh07-alpha/stockroom-frontend:<commit-sha>
 ```
 
-## AWS infrastructure with Terraform
+## AWS Terraform reference (not deployed)
 
-The `terraform/` directory defines a demo AWS VPC with two public subnets, an EKS control plane, and a managed worker node group. See [`terraform/README.md`](terraform/README.md) for prerequisites and the init, plan, apply, and destroy commands. AWS credentials must be configured locally through the AWS CLI profile or standard environment variables; never commit credentials or the generated Terraform state. EKS and EC2 resources incur charges while running, so destroy the demo infrastructure after use.
+The `terraform/` directory contains a reference configuration for a demo AWS VPC and EKS cluster. This project is being deployed locally without AWS; Terraform has been initialized and validated, but no AWS plan or resources have been created. See [`terraform/README.md`](terraform/README.md) if you want to review the reference configuration.
 
 ## Project tracking
 
