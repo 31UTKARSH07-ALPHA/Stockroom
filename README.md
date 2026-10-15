@@ -34,6 +34,7 @@ flowchart LR
     Ingress --> Web[React frontend]
     Ingress --> API[FastAPI backend]
     API --> DB[(PostgreSQL)]
+    HPA[Backend HPA: CPU target] -. scales .-> API
     Prom -. scrape /metrics .-> API
     Prom --> Grafana[Grafana dashboard]
 ```
@@ -145,7 +146,7 @@ helm status stockroom -n stockroom
 curl http://127.0.0.1:8080/health
 ```
 
-The chart runs two frontend and two backend replicas. Its PostgreSQL pod uses demo credentials and ephemeral storage. Treat this as a local demonstration, not a persistent production database. To remove the cluster, run `kind delete cluster --name stockroom`.
+The chart runs two frontend replicas. Backend replicas start at two and are managed by a CPU-based HPA (2–5 replicas). Its PostgreSQL pod uses demo credentials and ephemeral storage. Treat this as a local demonstration, not a persistent production database. To remove the cluster, run `kind delete cluster --name stockroom`.
 
 ### Roll out a CI-built source revision locally
 
@@ -162,6 +163,56 @@ kubectl get deployment stockroom-frontend -n stockroom -o wide
 ```
 
 This local rollout makes the source-to-image-to-deployment relationship visible; it is not an automated cloud deployment.
+
+### Backend autoscaling
+
+The chart defines a `autoscaling/v2` HPA for `stockroom-backend`: minimum 2, maximum 5 replicas, and a 50% average CPU utilization target. The backend CPU request is 100m, so the target corresponds to 50m average CPU per pod. The Deployment omits `spec.replicas` while autoscaling is enabled, preventing a Helm upgrade from resetting the HPA's desired count.
+
+Kind has no resource metrics API by default. Install the official [metrics-server v0.9.0](https://github.com/kubernetes-sigs/metrics-server/releases/tag/v0.9.0) manifest and add the Kind kubelet certificate flag with the idempotent helper:
+
+```bash
+./scripts/install-metrics-server-kind.sh
+```
+
+Upgrade the existing release while reusing its prior values (including any frontend image tag) and enabling the HPA settings:
+
+```bash
+helm upgrade stockroom helm/stockroom -n stockroom --reuse-values \
+  --set backend.autoscaling.enabled=true \
+  --set backend.autoscaling.minReplicas=2 \
+  --set backend.autoscaling.maxReplicas=5 \
+  --set backend.autoscaling.targetCPUUtilizationPercentage=50 --wait
+```
+
+Check that metrics are available and the HPA has a real current CPU value:
+
+```bash
+kubectl top nodes
+kubectl top pods -n stockroom
+kubectl get hpa -n stockroom
+```
+
+Start a temporary BusyBox load pod. By default, it runs 12 paced concurrent loops against the real database-backed `/api/products` endpoint through the `stockroom-backend` Service. Set `HPA_LOAD_WORKERS` before running the script to tune concurrency for the host:
+
+```bash
+./scripts/start-backend-hpa-load.sh
+kubectl get hpa -n stockroom -w
+```
+
+Wait until `TARGETS` reports CPU and `REPLICAS` rises above 2, then inspect the pods:
+
+```bash
+kubectl get pods -n stockroom
+```
+
+Stop the load and verify the HPA begins reducing its desired count (the default scale-down stabilization window can take about five minutes):
+
+```bash
+kubectl delete pod stockroom-hpa-load -n stockroom --wait=true
+kubectl get hpa -n stockroom -w
+```
+
+The test pod is temporary and can be recreated with the script. The other `backend` Service is a compatibility alias used by the frontend's Nginx proxy; it selects the same backend pods and is retained unchanged.
 
 ## Observability with Prometheus and Grafana
 
@@ -211,13 +262,13 @@ The evidence files below are committed in [`evidence/`](evidence/). Expand a mod
 | M5 — CI/CD | 15 | Complete | Actions workflow, GHCR SHA tags |
 | M6 — Trivy | 5 | Complete | Both images scanned; fixable HIGH/CRITICAL findings block the pipeline |
 | M7 — Terraform/AWS | 15 | **Partial by choice** | HCL, init/validate, and example variables only; no AWS plan/provision/destroy |
-| M8 — Kubernetes/Helm | 15 | Core scored items complete; final-project HPA requirement is pending | Kind, Helm, two replicas each, Services, Ingress |
+| M8 — Kubernetes/Helm | 15 | Complete; final-project HPA also implemented | Kind, Helm, two frontend replicas, 2–5 autoscaled backend replicas, Services, Ingress |
 | M9 — Observability | 10 | Complete | Metrics endpoint, two Prometheus targets, Grafana dashboard |
 | M10 — Presentation/docs | 5 | Complete | README, demo walkthrough, change/Actions/rollout evidence |
 
 ### Final student project minimum requirements audit
 
-This cross-check includes the separate minimum-requirements list in the capstone README, which names HPA even though HPA is not a separately scored item in the 100-point M8 rubric above. **The project does not yet meet every final-project minimum:** HPA is not implemented, and AWS Terraform resources were intentionally not created.
+This cross-check includes the separate minimum-requirements list in the capstone README, which names HPA even though HPA is not a separately scored item in the 100-point M8 rubric above. **AWS provisioning remains intentionally incomplete** because this project uses no AWS services.
 
 | Area | Minimum requirement | Status | Repository evidence / gap |
 | --- | --- | --- | --- |
@@ -236,7 +287,7 @@ This cross-check includes the separate minimum-requirements list in the capstone
 | DevOps | Kubernetes | Met | Application deployed to local Kind |
 | DevOps | Helm | Met | Stockroom chart deploys the application |
 | DevOps | Ingress | Met | Traefik routes `/` and `/api` |
-| DevOps | HPA | **Not met** | No HorizontalPodAutoscaler resource or metrics-server setup exists yet |
+| DevOps | HPA | Met | `autoscaling/v2` HPA scales `stockroom-backend` from 2 to 5 on CPU; Kind metrics-server installed and verified |
 | DevOps | Prometheus/Grafana | Met | Backend metrics scraped and dashboard provisioned in local Kind |
 
 ### M1 — Application
@@ -280,11 +331,22 @@ Terraform configuration, initialization, validation, and an example variables fi
 
 ### M8 — Kubernetes and Helm
 
-The Stockroom Helm release runs in Kind with frontend/backend Deployments, two replicas each, ClusterIP Services, PostgreSQL, and Traefik Ingress.
+The Stockroom Helm release runs in Kind with frontend and backend Deployments, ClusterIP Services, PostgreSQL, and Traefik Ingress. The frontend has two replicas; the backend scales from two to five replicas using CPU utilization.
 
 <p align="center">
   <a href="evidence/k8s-pods-services.png"><img src="evidence/k8s-pods-services.png" alt="Kind pods and services for Stockroom" width="49%"></a>
   <a href="evidence/helm-release.png"><img src="evidence/helm-release.png" alt="Stockroom Helm release status" width="49%"></a>
+</p>
+
+The Kind metrics-server provides live resource metrics to the backend HPA. Under load, CPU crossed the 50% target and the HPA increased the backend from two replicas to five. After the load pod was removed, CPU returned below target and the HPA began scaling down.
+
+<p align="center">
+  <a href="evidence/hpa-metrics-server.png"><img src="evidence/hpa-metrics-server.png" alt="kubectl top pods and backend HPA showing live CPU metrics" width="49%"></a>
+  <a href="evidence/hpa-scaling-up.png"><img src="evidence/hpa-scaling-up.png" alt="Backend HPA scaling from two to five replicas as CPU rises above target" width="49%"></a>
+</p>
+<p align="center">
+  <a href="evidence/hpa-scaled-pods.png"><img src="evidence/hpa-scaled-pods.png" alt="Stockroom pods while the HPA load pod and additional backend replicas are running" width="49%"></a>
+  <a href="evidence/hpa-scaled-down.png"><img src="evidence/hpa-scaled-down.png" alt="Backend HPA CPU returning below target after load removal" width="49%"></a>
 </p>
 
 ### M9 — Prometheus and Grafana
