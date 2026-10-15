@@ -47,7 +47,7 @@ Prometheus is at `http://localhost:9090/targets`; the `stockroom` job should sho
 
 ## Evidence checklist
 
-- [ ] `evidence/m10-export-feature.png` — Stockroom page with inventory and Export button
-- [ ] `evidence/m10-actions-run.png` — green workflow for the M10 commit
-- [ ] `evidence/m10-k8s-rollout.png` — terminal showing the SHA-tagged frontend rollout and ready replicas
+- [x] `evidence/export-csv.png` — Stockroom inventory and exported CSV contents
+- [x] `evidence/actions-run.png` — green workflow for the M10 commit
+- [x] `evidence/k8s-rollout.png` — terminal showing the SHA-tagged frontend rollout and 2/2 ready replicas
 - [ ] Optional short demo recording, if desired
