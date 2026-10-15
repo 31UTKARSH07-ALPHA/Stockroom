@@ -3,6 +3,11 @@ fullnameOverride: ""
 
 backend:
   replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 50
   image:
     repository: stockroom-backend
     tag: local
