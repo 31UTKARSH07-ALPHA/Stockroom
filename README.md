@@ -5,7 +5,7 @@
 **A full-stack inventory CRUD application with a containerized delivery pipeline and a locally deployed Kubernetes demo.** Stockroom helps a small team track products, categories, quantities, and stock value. This repository demonstrates the path from a code change through automated tests and security scans to a versioned container image and a Helm-managed Kind deployment.
 
 [![Stockroom CI/CD](https://github.com/31UTKARSH07-ALPHA/Stockroom/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/31UTKARSH07-ALPHA/Stockroom/actions/workflows/ci-cd.yml)
-[View the repository](https://github.com/31UTKARSH07-ALPHA/Stockroom) · [Demo walkthrough video](demo/Stockroom-Project-Walkthrough.mp4) · [Project presentation](demo/Stockroom-Project-Presentation.pptx) · [Grading evidence](#rubric-and-evidence)
+[View the repository](https://github.com/31UTKARSH07-ALPHA/Stockroom) · [Download demo video](demo/Stockroom-Project-Walkthrough.mp4) · [View slides (PDF)](demo/Stockroom-Project-Presentation.pdf) · [Download PowerPoint](demo/Stockroom-Project-Presentation.pptx) · [Grading evidence](#rubric-and-evidence)
 
 > **Deployment scope:** Docker Compose and Kubernetes run locally. Terraform contains an AWS VPC/EKS reference configuration, but no AWS plan or resources were created. This project intentionally uses no AWS services.
 
@@ -380,15 +380,18 @@ k8s/                     Kind cluster configuration and namespace
 observability/            Prometheus and Grafana Helm values
 terraform/                AWS VPC/EKS reference configuration (not applied)
 evidence/                 Rubric screenshots (PNG)
-demo/                     Editable project presentation and walkthrough video
+demo/                     Editable PowerPoint, browser-viewable PDF, and walkthrough video
 DEMO.md                   Step-by-step presentation walkthrough
 ```
 
 ## Project presentation and walkthrough
 
+- [View the presentation in your browser (PDF)](demo/Stockroom-Project-Presentation.pdf)
 - [Download the editable PowerPoint presentation](demo/Stockroom-Project-Presentation.pptx)
-- [Watch or download the narrated project walkthrough (MP4)](demo/Stockroom-Project-Walkthrough.mp4)
+- [Download the narrated project walkthrough (MP4)](demo/Stockroom-Project-Walkthrough.mp4)
 - Google Drive copy: add the share link here after uploading the MP4.
+
+GitHub does not preview MP4 or PPTX files inline. The PDF opens as a browser preview; download the MP4 to watch it locally. For in-browser video playback, upload the MP4 to Google Drive or YouTube and replace the pending link above with its share URL.
 
 ## Links
 
